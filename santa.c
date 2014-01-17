@@ -1,14 +1,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
-#define MAX_PEOPLE 10
-
-/* #define DEBUG printf */
-#define DEBUG(...)
+#define MAX_PEOPLE 20
 
 struct person {
-  int id;
   char name[50];
   int givable[MAX_PEOPLE];
   int is_giver;
@@ -22,16 +19,14 @@ struct pair {
 };
 
 int
-assign(struct person *people, struct pair *assignments, int npeople, int n) {
+assign(struct person *people, struct pair *pair_hat, int npeople, int n) {
   int i, j;
-
-  DEBUG("Enter level %d\n", n);
 
   if (n == npeople) {
     printf("Found a solution:\n");
     for (i = 0; i < n; i++) {
-      int giver = assignments[i].giver;
-      int receiver = assignments[i].receiver;
+      int giver = pair_hat[i].giver;
+      int receiver = pair_hat[i].receiver;
       printf("  %10s => %10s\n", people[giver].name, people[receiver].name);
     }
     printf("\n");
@@ -39,39 +34,41 @@ assign(struct person *people, struct pair *assignments, int npeople, int n) {
   }
 
   for (i = 0; i < npeople; i++) {
-    if (people[i].is_giver) { DEBUG("Rejecting giver %d\n", i); continue; }
+    if (people[i].is_giver) continue;
 
     for (j = 0; j < npeople; j++) {
+      /* We can reject a recipient for already having a gift,
+       * for not being able to receive from the giver, or
+       * for already being in the hat with the giver.
+       */
       int k;
       int succeeded;
       int already_in_hat = 0;
-      if (!people[i].givable[j]) { DEBUG("Rejecting self-giving %d %d\n", i, j); continue; }
-      if (people[j].is_receiver) { DEBUG("Rejecting receiver %d\n", j); continue; }
+      if (!people[i].givable[j]) continue;
+      if (people[j].is_receiver) continue;
 
       for (k = 0; k < n; k++) {
-        if (assignments[k].giver == j && assignments[k].receiver == i) {
+        if (pair_hat[k].giver == j && pair_hat[k].receiver == i) {
           already_in_hat = 1;
+          break;
         }
       }
       if (already_in_hat) continue;
 
-      assignments[n].giver = i;
-      assignments[n].receiver = j;
+      pair_hat[n].giver = i;
+      pair_hat[n].receiver = j;
 
       people[i].is_giver = 1;
       people[j].is_receiver = 1;
 
-      DEBUG("Recurse!\n");
-      succeeded = assign(people, assignments, npeople, n+1);
+      succeeded = assign(people, pair_hat, npeople, n+1);
       if (succeeded)
         return 1;
-      DEBUG("Recurse done!\n");
 
       people[i].is_giver = 0;
       people[j].is_receiver = 0;
     }
   }
-  DEBUG("Exit level %d\n", n);
 
   return 0;
 
@@ -83,33 +80,41 @@ main(int argc, char *argv[]) {
   int npeople = argc - 1;
   struct person people[MAX_PEOPLE];
 
+  if (argc == 1) {
+    printf("Usage: %s [name] [name ]...\n", argv[0]);
+    exit(1);
+  }
+
+  srandom(getpid());
+
+  /* Set up people with names and initial givable[] array */
   for (i = 0; i < argc - 1; i++) {
-    people[i].id = i;
     strcpy(people[i].name, argv[i+1]);
     for (j = 0; j < npeople; j++) {
-      people[i].givable[j] = (i != j);
+      people[i].givable[j] = (i != j); /* Can give to anyone but myself */
     }
     people[i].is_giver = 0;
     people[i].is_receiver = 0;
   }
 
-  srandom(getpid());
+  /* Marry people off at random. [Warning: polygamy may offend...] */
   for (i = 0; i < npeople; i++) {
     int h, w;
-    h = random() % npeople;
-    w = random() % npeople;
-    if (w == h) { i--; continue; }
-    printf("SPOUSES: %s and %s\n", people[h].name, people[w].name);
+    do {
+      h = random() % npeople;
+      w = random() % npeople;
+    } while (w == h);
+    printf("RANDOM MARRIAGE: %s and %s\n", people[h].name, people[w].name);
     people[h].givable[w] = 0;
     people[w].givable[h] = 0;
   }
-  people[1].givable[2] = 0;
-  people[2].givable[1] = 0;
 
+  /* Find a workable assignment */
   struct pair assignments[MAX_PEOPLE];
-
   result = assign(people, assignments, npeople, 0);
   if (!result) {
     printf("No possible results\n");
   }
+
+  return 0;
 }
